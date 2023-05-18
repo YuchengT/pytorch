@@ -1316,9 +1316,9 @@ class BenchmarkRunner:
                     model_name,
                     batch_size,
                 )
-                self.model_iter_fn(model, example_inputs)
-                #optimized_model_iter_fn = optimize_ctx(self.model_iter_fn)
-                #optimized_model_iter_fn(model, example_inputs)
+                self.model_iter_fn(model, example_inputs)             
+                optimized_model_iter_fn = optimize_ctx(self.model_iter_fn)
+                optimized_model_iter_fn(model, example_inputs)               
                 return batch_size
             except RuntimeError as e:
                 error_str = str(e)
