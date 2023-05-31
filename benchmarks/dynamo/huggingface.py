@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import warnings
 
 import torch
@@ -585,7 +586,10 @@ def refresh_model_names_and_batch_sizes():
 def huggingface_main():
     # Code to refresh model names and batch sizes
     if ("--find-all-batch-sizes" in sys.argv) and ("--only" not in '\t'.join(sys.argv)) and ("--accuracy" not in sys.argv):
+        stime = time.time()
         refresh_model_names_and_batch_sizes()
+        duration = time.time() - stime
+        print(duration)
     logging.basicConfig(level=logging.WARNING)
     warnings.filterwarnings("ignore")
     main(HuggingfaceRunner())

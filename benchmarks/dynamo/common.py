@@ -1097,16 +1097,16 @@ class BenchmarkRunner:
     def batch_size_finder(self, device, model_name, initial_batch_size=1024):
         batch_size = initial_batch_size
         while batch_size >= 1:
-            torch.cuda.empty_cache()
             try:
+                torch.cuda.empty_cache()
                 device, name, model, example_inputs, _ = self.load_model(
                     device,
                     model_name,
                     batch_size,
                 )
                 self.model_iter_fn(model, example_inputs)
-                optimized_model_iter_fn = optimize_ctx(self.model_iter_fn)
-                optimized_model_iter_fn(model, example_inputs)
+                optimized_model = torch.compile(model, backend='inductor', mode='default')
+                self.model_iter_fn(optimized_model, example_inputs)
                 return batch_size
             except RuntimeError as e:
                 error_str = str(e)

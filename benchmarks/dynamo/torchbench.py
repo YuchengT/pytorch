@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import warnings
+import time
 from os.path import abspath, exists
 
 log = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ def read_models_and_batch_sizes():
     return TORCHBENCH_MODELS
 
 def refresh_model_batch_sizes():
+    stime = time.time()
     new_filename = os.path.join(os.path.dirname(__file__),"torchbench_models_bs_list_temp.txt")
     if os.path.exists(new_filename):
         subprocess.check_call(["rm", new_filename])
@@ -87,6 +89,8 @@ def refresh_model_batch_sizes():
                 )
             except subprocess.SubprocessError:
                 log.warning(f"Failed to find suitable batch size for {model_name}")
+    duration = time.time() - stime
+    print(duration)
     subprocess.check_call(f"cp -f {new_filename} {MODELS_FILENAME}", shell=True)
 
 # Some models have large dataset that doesn't fit in memory. Lower the batch
@@ -420,11 +424,11 @@ class TorchBenchmarkRunner(BenchmarkRunner):
 
 
 def torchbench_main():
-    original_dir = setup_torchbench_cwd()
     if ("--find-all-batch-sizes" in sys.argv) and ("--only" not in '\t'.join(sys.argv)) and ("--accuracy" not in sys.argv):
         refresh_model_batch_sizes()
     if os.path.exists(MODELS_FILENAME):
         read_models_and_batch_sizes()
+    original_dir = setup_torchbench_cwd()
     logging.basicConfig(level=logging.WARNING)
     warnings.filterwarnings("ignore")
     main(TorchBenchmarkRunner(), original_dir)

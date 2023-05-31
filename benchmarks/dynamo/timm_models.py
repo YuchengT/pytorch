@@ -48,21 +48,25 @@ def read_models_and_batch_sizes():
 
 
 def refresh_model_batch_sizes():
+    stime = time.time()
     new_filename = os.path.join(os.path.dirname(__file__),"timm_models_list_temp.txt")
     if os.path.exists(new_filename):
         subprocess.check_call(["rm", new_filename])
     TIMM_MODELS = read_models_and_batch_sizes()
     for model_name in sorted(list(TIMM_MODELS.keys())):
-        try:
-            subprocess.check_call(
-                [sys.executable]
-                + sys.argv
-                + ["--find-batch-sizes"]
-                + [f"--only={model_name}"]
-                + [f"--output={new_filename}"]
-            )
-        except subprocess.SubprocessError:
-            log.warning(f"Failed to find suitable batch size for {model_name}")
+        if model_name not in SKIP:
+            try:
+                subprocess.check_call(
+                    [sys.executable]
+                    + sys.argv
+                    + ["--find-batch-sizes"]
+                    + [f"--only={model_name}"]
+                    + [f"--output={new_filename}"]
+                )
+            except subprocess.SubprocessError:
+                log.warning(f"Failed to find suitable batch size for {model_name}")
+    duration = time.time() - stime
+    print(duration)
     subprocess.check_call(f"cp -f {new_filename} {MODELS_FILENAME}", shell=True)
 
 # TODO - Figure out the reason of cold start memory spike
@@ -98,6 +102,8 @@ REQUIRE_HIGHER_TOLERANCE = set("botnet26t_256")
 SKIP = {
     # Unusual training setup
     "levit_128",
+    "gluon_xception65",
+    "selecsls42b",
 }
 
 
