@@ -2,9 +2,9 @@ from functools import partial
 
 import torch
 import torch.utils._pytree as pytree
-from torch._C import DispatchKey, DispatchKeySet, ExcludeDispatchKeyGuard
+from torch._C import DispatchKey, DispatchKeySet, _ExcludeDispatchKeyGuard
 from torch._functorch.eager_transforms import _unwrap_all_tensors_from_functional, _wrap_all_tensors_to_functional, functionalize
-from torch._functorch.aot_autograd import create_joint
+from torch._functorch.aot_autograd import create_joint, AOTConfig
 from torch._ops import HigherOrderOperator
 from torch._subclasses.fake_tensor import FakeTensorMode
 from torch.multiprocessing.reductions import StorageWeakRef
@@ -31,6 +31,15 @@ class MapWrapper(HigherOrderOperator):
 
 map = MapWrapper("map")
 map_impl = HigherOrderOperator("map_impl")
+
+dummy_aot_config = AOTConfig(fw_compiler=None,
+                             bw_compiler=None,
+                             partition_fn=None,
+                             decompositions={},
+                             num_params_buffers=0,
+                             aot_id=0,
+                             keep_inference_input_mutations=False)
+
 
 def create_fw_bw_graph(f, num_mapped_args, *args):
     mapped_xs = args[:num_mapped_args]
@@ -80,7 +89,7 @@ def create_fw_bw_graph(f, num_mapped_args, *args):
                 fw_out = f(*args)
                 return fw_out, [True if isinstance(ret, torch.Tensor) and ret.requires_grad else False for ret in fw_out]
 
-            joint = create_joint(fw_with_masks)
+            joint = create_joint(fw_with_masks, aot_config=dummy_aot_config)
             _, grads = joint(list(mapped_input) + list(args),
                              [grad for grad in mapped_grads if grad is not None and grad.requires_grad])
 
@@ -133,11 +142,8 @@ class MapAutogradOp(torch.autograd.Function):
         ctx.save_for_backward(*flat_args)
         ctx._joint_graph = joint_graph
         ctx._num_mapped_args = num_mapped_args
-        try:
-            guard = torch._C._AutoDispatchBelowAutograd()
+        with torch._C._AutoDispatchBelowAutograd():
             return (*map_impl(fw_graph, num_mapped_args, *flat_args), )
-        finally:
-            del guard
 
     @staticmethod
     def backward(ctx, *flat_grads):
@@ -259,8 +265,7 @@ def map_func(f, num_mapped, *args):
     unwrapped_args = _unwrap_all_tensors_from_functional(pos_args, reapply_views=reapply_views)
     mode = 'mutations_and_views' if reapply_views else 'mutations'
 
-    guard = ExcludeDispatchKeyGuard(DispatchKeySet(DispatchKey.Functionalize))
-    try:
+    with _ExcludeDispatchKeyGuard(DispatchKeySet(DispatchKey.Functionalize)):
         functional_map_fn = functionalize(f, remove=mode)
         with disable_proxy_modes_tracing():
             example_inputs = (*_unstack_pytree(unwrapped_xs)[0], *unwrapped_args)
@@ -277,8 +282,6 @@ def map_func(f, num_mapped, *args):
 
         map_return = map_impl(functional_map_fn, num_mapped, *unwrapped_xs, *unwrapped_args)
         return _wrap_all_tensors_to_functional(map_return, level=0)
-    finally:
-        del guard
 
 @map_impl.py_impl(torch._C._functorch.TransformType.Functionalize)
 def map_functionalize(interpreter, f, num_mapped, *args):
